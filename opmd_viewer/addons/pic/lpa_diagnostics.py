@@ -611,7 +611,7 @@ class LpaDiagnostics( OpenPMDTimeSeries ):
         return(np.sqrt(2) * sigma_r)
 
     def get_spectrogram( self, t=None, iteration=None, pol=None, theta=0,
-                          slicing_dir='y', plot=False ):
+                          slicing_dir='y', plot=False, method='frog' ):
         """
         Calculates the spectrogram of a laserpulse, by the FROG method.
 
@@ -646,8 +646,7 @@ class LpaDiagnostics( OpenPMDTimeSeries ):
         - info : a FieldMetaInformation object
            (see the corresponding docstring)
         """
-        # Get the field envelope
-        env, _ = self.get_laser_envelope(t=t, iteration=iteration, pol=pol)
+        
         # Get the field
         E, info = self.get_field( t=t, iteration=iteration, field='E',
                                     coord=pol, theta=theta,
@@ -660,24 +659,37 @@ class LpaDiagnostics( OpenPMDTimeSeries ):
         tmax = info.zmax / const.c
         T = tmax - tmin
         dt = T / Nz
-        # Normalize the Envelope
-        env /= np.sqrt(np.trapz(env ** 2, dx=dt))
-        # Allocate array for the gating function and the spectrogran
-        E_shift = np.zeros_like(E)
-        spectrogram = np.zeros((2 * Nz, Nz))
-        # Loop over the time variable of the spectrogram
-        for i in range( Nz * 2):
-            itau = i % Nz
-            # Shift the E field and fill the rest with zeros
-            if i < Nz:
-                E_shift[:itau] = env[ Nz - itau: Nz]
-                E_shift[itau:] = 0
-            else:
-                E_shift[itau:] = env[: Nz - itau]
-                E_shift[:itau] = 0
-            EE = E * E_shift ** 2
-            fft_EE = np.fft.fft(EE)
-            spectrogram[i, :] = np.abs(fft_EE) ** 2
+        # Calculate spetrogram with FROG method
+        if method is 'frog':
+            # Get the field envelope for FROG method
+            env, _ = self.get_laser_envelope(t=t, iteration=iteration, pol=pol)
+            # Normalize the Envelope
+            env /= np.sqrt(np.trapz(env ** 2, dx=dt))
+            # Allocate array for the gating function and the spectrogran
+            E_shift = np.zeros_like(E)
+            spectrogram = np.zeros((2 * Nz, Nz))
+            # Loop over the time variable of the spectrogram
+            for i in range( Nz * 2):
+                itau = i % Nz
+                # Shift the E field and fill the rest with zeros
+                if i < Nz:
+                    E_shift[:itau] = env[ Nz - itau: Nz]
+                    E_shift[itau:] = 0
+                else:
+                    E_shift[itau:] = env[: Nz - itau]
+                    E_shift[:itau] = 0
+                EE = E * E_shift ** 2
+                fft_EE = np.fft.fft(EE)
+                spectrogram[i, :] = np.abs(fft_EE) ** 2
+        if method is 'wigner':
+            autocorr = np.zeros_like(E)
+            spectrogram = np.zeros((Nz, Nz))
+            for i in range(Nz):
+                autocorr = np.pad(E, (0, i), mode='constant')[i:] * \
+                           np.pad(E, (0, -i), mode='constant')[-i:]
+                fft_autocorr = np.fft.fft(autocorr)
+                spectrogram[i, :] = np.abs(fft_autocorr)
+
         # Rotate and flip array to have input form of imshow
         spectrogram = np.flipud(np.rot90(spectrogram[:, Nz / 2:]))
         # Find the time at which the wigner transform is the highest
