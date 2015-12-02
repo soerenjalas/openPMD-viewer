@@ -681,22 +681,36 @@ class LpaDiagnostics( OpenPMDTimeSeries ):
                 EE = E * E_shift ** 2
                 fft_EE = np.fft.fft(EE)
                 spectrogram[i, :] = np.abs(fft_EE) ** 2
+            domega = 2 * np.pi / T
         if method is 'wigner':
             autocorr = np.zeros_like(E)
             spectrogram = np.zeros((Nz, Nz))
-            for i in range(Nz):
-                autocorr = np.pad(E, (0, i), mode='constant')[i:] * \
-                           np.pad(E, (0, -i), mode='constant')[-i:]
-                fft_autocorr = np.fft.fft(autocorr)
-                spectrogram[i, :] = np.abs(fft_autocorr)
+            for i in range(-Nz/2, Nz/2):
+                plus_shift = np.roll(E[::-1], i)
+                minus_shift = np.roll(E, -i)
+                # if i > 0:
+                #     plus_shift[:i] = 0
+                #     minus_shift[-i:] = 0
+                # else: 
+                #     minus_shift[:-i] = 0
+                #     plus_shift[i:] = 0
+                autocorr = plus_shift * minus_shift
+                fft_autocorr = np.abs(np.fft.fft(autocorr))
+                #spectrogram[i, :] = np.hstack((fft_autocorr, fft_autocorr[::-1])) 
+                spectrogram[i+Nz/2, :] = fft_autocorr
+                spectrogram[:,Nz-Nz/20:] = 0
+                #spectrogram[i + Nz, :] = np.fft.fftshift(spectrogram[i, :])
+            domega = np.pi / T
+            dt *=2
 
         # Rotate and flip array to have input form of imshow
-        spectrogram = np.flipud(np.rot90(spectrogram[:, Nz / 2:]))
+        spectrogram = np.fliplr(np.flipud(np.rot90(spectrogram[:, Nz / 2:])))
+        #spectrogram = np.rot90(spectrogram[:,Nz/2:])
         # Find the time at which the wigner transform is the highest
         maxi, maxj = np.unravel_index(spectrogram.argmax(), spectrogram.shape)
         tmin = -(T - T / spectrogram.shape[1] * maxj)
         info = FieldMetaInformation( {0:'omega', 1:'t'}, spectrogram.shape,
-                    grid_spacing=( 2*np.pi/T, dt/2. ), grid_unitSI=1,
+                    grid_spacing=( domega, dt/2. ), grid_unitSI=1,
                     global_offset=(0, tmin), position=(0, 0))
 
         # Plot the result if needed
