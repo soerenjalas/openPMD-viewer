@@ -686,8 +686,10 @@ class LpaDiagnostics( OpenPMDTimeSeries ):
             autocorr = np.zeros_like(E)
             spectrogram = np.zeros((Nz, Nz))
             for i in range(-Nz/2, Nz/2):
+            	# Shift the field against itself
                 plus_shift = np.roll(E[::-1], i)
                 minus_shift = np.roll(E, -i)
+                # Work in Progress: could help to break the oversampling
                 # if i > 0:
                 #     plus_shift[:i] = 0
                 #     minus_shift[-i:] = 0
@@ -696,10 +698,8 @@ class LpaDiagnostics( OpenPMDTimeSeries ):
                 #     plus_shift[i:] = 0
                 autocorr = plus_shift * minus_shift
                 fft_autocorr = np.abs(np.fft.fft(autocorr))
-                #spectrogram[i, :] = np.hstack((fft_autocorr, fft_autocorr[::-1])) 
                 spectrogram[i+Nz/2, :] = fft_autocorr
                 spectrogram[:,Nz-Nz/20:] = 0
-                #spectrogram[i + Nz, :] = np.fft.fftshift(spectrogram[i, :])
             domega = np.pi / T
             dt *=2
 
