@@ -21,20 +21,17 @@ class InteractiveViewer(object):
     def __init__(self) :
         pass
 
-    def slider(self, figsize=(10,10), ifig_f=0, ifig_p=1, **kw) :
+    def slider(self, figsize=(10,10), **kw) :
         """
         Navigate the simulation using a slider
 
         Parameters :
         ------------
-        ifig_f : int
-           Number of the figure where to plot the fields
+        figsize: tuple
+            Size of the figures
 
-        ifig_g : int
-           Number of the figure where to plot the particles
-
-        kw : dict
-           Extra arguments to pass to matplotlib's imshow
+        kw: dict
+            Extra arguments to pass to matplotlib's imshow
         """
 
         # -----------------------
@@ -51,7 +48,7 @@ class InteractiveViewer(object):
                     do_refresh = True
             # Do the refresh
             if do_refresh == True :
-                plt.figure(ifig_f, figsize=figsize)
+                plt.figure(fld_figure_button.value, figsize=figsize)
                 plt.clf()
 
                 # When working in inline mode, in an ipython notebook,
@@ -85,7 +82,7 @@ class InteractiveViewer(object):
                     do_refresh = True
             # Do the refresh
             if do_refresh == True :
-                plt.figure(ifig_p, figsize=figsize)
+                plt.figure(ptcl_figure_button.value, figsize=figsize)
                 plt.clf()
 
                 # When working in inline mode, in an ipython notebook,
@@ -106,6 +103,7 @@ class InteractiveViewer(object):
                     # 1D histogram
                     self.get_particle( t=self.current_t, output=False,
                         var_list=[ptcl_xaxis_button.value],
+                        select=ptcl_select_widget.to_dict(),
                         species=ptcl_species_button.value, plot=True, 
                         vmin=vmin, vmax=vmax, cmap=ptcl_color_button.value,
                         nbins=ptcl_bins_button.value )
@@ -114,6 +112,7 @@ class InteractiveViewer(object):
                     self.get_particle( t=self.current_t, output=False,
                         var_list=[ptcl_xaxis_button.value,
                                   ptcl_yaxis_button.value],
+                        select=ptcl_select_widget.to_dict(),
                         species=ptcl_species_button.value, plot=True,
                         vmin=vmin, vmax=vmax, cmap=ptcl_color_button.value,
                         nbins=ptcl_bins_button.value )
@@ -211,6 +210,9 @@ class InteractiveViewer(object):
 
             # Plotting options
             # ----------------
+            # Figure number
+            fld_figure_button = widgets.IntText( description='Figure ',
+                                        value=0, width=50)
             # Range of values
             fld_range_button = widgets.FloatRangeSlider(
                 min=-10, max=10, width=220 )
@@ -251,9 +253,9 @@ class InteractiveViewer(object):
                     slicing_dir_button, slicing_button ] )
             # Plotting options container
             container_fld_plots = widgets.VBox( width=260,
-                children=[ fld_range_button,
-            widgets.HBox( children=[ fld_magnitude_button, fld_use_button] ),
-            fld_color_button ] )
+                children=[ fld_figure_button, fld_range_button,
+            widgets.HBox( children=[ fld_magnitude_button, fld_use_button],
+                          height=50 ), fld_color_button ] )
             # Accordion for the field widgets
             accord1 = widgets.Accordion(
                 children=[container_fields, container_fld_plots] )
@@ -272,7 +274,7 @@ class InteractiveViewer(object):
             # Particle quantities
             # -------------------         
             # Species selection
-            ptcl_species_button = widgets.ToggleButtons(
+            ptcl_species_button = widgets.Dropdown( width=250,
                 options=self.avail_species )
             ptcl_species_button.on_trait_change( refresh_ptcl )
             # Remove charge and mass (less interesting) 
@@ -287,8 +289,17 @@ class InteractiveViewer(object):
                 value='x', options=avail_ptcl_quantities+['None'] )
             ptcl_yaxis_button.on_trait_change( refresh_ptcl )
 
+            # Particle selection
+            # ------------------
+            # 3 selection rules at maximum
+            ptcl_select_widget = ParticleSelectWidget(3,
+                                avail_ptcl_quantities, refresh_ptcl)
+
             # Plotting options
             # ----------------
+            # Figure number
+            ptcl_figure_button = widgets.IntText( description='Figure ',
+                                            value=1, width=50 )
             # Number of bins
             ptcl_bins_button = widgets.IntSlider( description='nbins:',
                             min=50, max=300, value=100, width=150 )
@@ -323,16 +334,20 @@ class InteractiveViewer(object):
             container_ptcl_quantities = widgets.VBox( width=310,
                 children=[ ptcl_species_button, ptcl_xaxis_button,
                            ptcl_yaxis_button] )
+            # Particle selection container
+            container_ptcl_select = ptcl_select_widget.to_container()
             # Plotting options container
             container_ptcl_plots = widgets.VBox( width=310,
-            children=[ ptcl_bins_button, ptcl_range_button,
-            widgets.HBox(children=[ ptcl_magnitude_button, ptcl_use_button] ),
-            ptcl_color_button ])
+            children=[ ptcl_figure_button, ptcl_bins_button, ptcl_range_button,
+            widgets.HBox(children=[ ptcl_magnitude_button, ptcl_use_button],
+                         height=50), ptcl_color_button ])
             # Accordion for the field widgets
             accord2 = widgets.Accordion(
-            children=[container_ptcl_quantities, container_ptcl_plots] )
+            children=[container_ptcl_quantities, container_ptcl_select,
+                      container_ptcl_plots] )
             accord2.set_title(0, 'Particle quantities')
-            accord2.set_title(1, 'Plotting options')
+            accord2.set_title(1, 'Particle selection')
+            accord2.set_title(2, 'Plotting options')
             # Complete particle container
             container_ptcl =  widgets.VBox( width=370,
                 children=[ accord2, widgets.HBox(
@@ -357,3 +372,80 @@ def convert_to_int( m ):
         return(m)
     else:
         return( int(m) )
+
+
+
+class ParticleSelectWidget(object):
+    """
+    Class that groups the particle selection widgets.
+    """
+
+    def __init__( self, n_rules, avail_ptcl_quantities, refresh_ptcl):
+        """
+        Initialize a set of particle selection widgets
+
+        Parameters:
+        -----------
+        n_rules: int
+            The number of selection rules to display
+
+        avail_ptcl_quantities: list of string
+            The particle quantities in the present openPMD timeseries
+
+        refresh_ptcl: callable
+            The callback function to execute when the widget is changed
+        """
+        self.n_rules = n_rules
+        
+        # Create widgets that determines whether the rule is used
+        self.active = [ widgets.Checkbox(value=False) \
+                         for i in range(n_rules) ]
+        # Create widgets that determines the quantity on which to select
+        self.quantity = [ widgets.Dropdown(options=avail_ptcl_quantities,
+                            description='Select ') for i in range(n_rules) ]
+        # Create widgets that determines the lower bound and upper bound
+        self.low_bound = [ widgets.FloatText( value=-1.e-1, width = 90,
+                    description='from ') for i in range(n_rules) ]
+        self.up_bound = [ widgets.FloatText( value=1.e-1, width = 90,
+                    description='to ') for i in range(n_rules) ]
+
+        # Add the callback function refresh_ptcl to each widget
+        for i in range(n_rules):
+            self.active[i].on_trait_change( refresh_ptcl )
+            self.quantity[i].on_trait_change( refresh_ptcl )
+            self.low_bound[i].on_trait_change( refresh_ptcl )
+            self.up_bound[i].on_trait_change( refresh_ptcl )
+
+    def to_container( self ):
+        """
+        Return a widget container, where all the particle selection
+        widgets are placed properly, with respect to each other.
+        """
+        containers = []
+        for i in range(self.n_rules):
+            containers.append( widgets.HBox( height=40,
+                children=[self.active[i], self.quantity[i]] ))
+            containers.append( widgets.HBox( height=50, 
+                children=[self.low_bound[i], self.up_bound[i]] ))
+
+        return( widgets.VBox( children=containers, width=310 ) )
+
+    def to_dict( self ):
+        """
+        Return a selection dictionary of the form
+        {'uz': [-0.1, 2.], 'x':[-10., 10.]}
+        depending on the values of the widgets.
+        """
+        rule_dict = {}
+        # Go through the selection rules and add the active rules
+        for i in range( self.n_rules ):
+            if self.active[i].value is True:
+                rule_dict[ self.quantity[i].value ] = \
+                    [ self.low_bound[i].value, self.up_bound[i].value ]
+
+        # If any rule is active, return a dictionary
+        if len(rule_dict) != 0:
+            return(rule_dict)
+        # If no rule is active, return None
+        else:
+            return(None)
