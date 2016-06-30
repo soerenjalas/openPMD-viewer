@@ -725,9 +725,17 @@ class LpaDiagnostics( OpenPMDTimeSeries ):
         # pick the corresponding transverse slice
         itrans_max, iz_max = np.unravel_index(
             np.argmax( field ), dims=field.shape )
-        trans_slice = field[ :, iz_max ]
         # Get transverse positons
         trans_pos = getattr(info, info.axes[0])
+
+        zfit = curve_fit(gaussian_profile, info.z, field[field.shape[0]/2, :],
+                           p0=[info.z[iz_max], np.amax(field), 0])[0]
+        z_max = zfit[0]
+
+        iz_max = np.argmin(np.abs(info.z-z_max))
+
+        trans_slice = field[ :, iz_max ]
+        
 
         # Compute waist with RMS value
         # (serves as initial guess when method=='fit')
